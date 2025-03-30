@@ -1,0 +1,14 @@
+defaults:
+  - base/base_det_train@train_dataset
+  - base/base_det_val@val_dataset
+
+train_dataset:
+  _target_: det3d.datasets.kitti.KittiDataset
+  root_path: /mnt/data1/jlk/train/vic3d-early-fusion-training
+  info_path: kitti_infos_train_4cls.pkl
+  resampling: True
+
+val_dataset:
+  _target_: ${data.train_dataset._target_}
+  root_path: ${data.train_dataset.root_path}
+  info_path: ${data.train_dataset.info_path} 

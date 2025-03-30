@@ -97,15 +97,21 @@ class AssignLabel(object):
                 inds[task_id][new_idx] = y * hms[task_id].shape[2] + x
                 masks[task_id][new_idx] = 1
 
-                vx, vy = gt_dict['gt_boxes'][k][6:8]
-                rot = gt_dict['gt_boxes'][k][8]
+                if gt_dict['gt_boxes'][k].shape[0] == 7:
+                    # box annotation without velocity
+                    vx, vy = 0.0, 0.0
+                    rot = gt_dict['gt_boxes'][k][6]
+                elif gt_dict['gt_boxes'][k].shape[0] == 9: 
+                    vx, vy = gt_dict['gt_boxes'][k][6:8]
+                    rot = gt_dict['gt_boxes'][k][8]
+                else:
+                    raise ValueError("gt_boxes shape not valid", gt_dict['gt_boxes'][k].shape)
 
                 annos[task_id][new_idx] = np.concatenate(
                     (ct - (x, y), gt_dict['gt_boxes'][k][2], np.log(gt_dict['gt_boxes'][k][3:6]),
                      np.array(vx), np.array(vy), np.sin(rot), np.cos(rot)), axis=None)
                 gt_boxes[task_id][new_idx] = np.concatenate(
-                    (gt_dict['gt_boxes'][k][0:6],
-                     gt_dict['gt_boxes'][k][8]), axis=None
+                    (gt_dict['gt_boxes'][k][0:6], rot), axis=None
                 )
 
                 task_nums[task_id] += 1

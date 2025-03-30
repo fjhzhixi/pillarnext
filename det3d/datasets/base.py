@@ -64,7 +64,10 @@ class BaseDataset(Dataset):
     def __getitem__(self, idx):
 
         info = self.infos[idx]
-        res = {"token": info["token"]}
+        if "token" in info:
+            res = {"token": info["token"]}
+        else:
+            res = {}
 
         if self.loading_pipelines is not None:
             for lp in self.loading_pipelines:
