@@ -1,9 +1,10 @@
+import pickle
 import torch
 from pathlib import Path
 from ..utils.checkpoint import load_checkpoint, save_checkpoint
 from ..utils.progressbar import ProgressBar
 import torch.distributed as dist
-
+from tensorboardX import SummaryWriter
 
 def example_to_device(example, device, non_blocking=False):
     example_torch = {}
@@ -45,8 +46,10 @@ class Trainer(object):
         self.clip_grad_val = clip_grad_val
         self.eval_every_nepochs = eval_every_nepochs
         self.eval_epochs = eval_epochs
+        self.save_freq = 5
 
         self.logger = logger
+        self.writer = SummaryWriter(log_dir="tensorboard_logs")
 
     @property
     def current_lr(self):
@@ -67,6 +70,8 @@ class Trainer(object):
 
     def load_checkpoint(self, filename, map_location="cpu", strict=False):
         self.logger.info("load checkpoint from %s", filename)
+        epoch_id = int(filename.split("_")[-1].split(".")[0])       # model checkpoint saved as epoch_1.pth
+        self.epoch = epoch_id
         return load_checkpoint(self.model, filename, map_location, strict)
 
     def save_checkpoint(self, filename_tmpl="epoch_{}.pth", save_optimizer=True):
@@ -113,6 +118,9 @@ class Trainer(object):
         loss, logs = self.model(data_batch)
         self.optimize_step(loss)
 
+        # save loss logs to tensorboard
+        self._log_dict_to_board(logs, self.global_step)
+
         if (self.inner_iter + 1) % self.log_every_niters == 0:
             log_str = "Epoch [{}/{}][{}/{}]\tlr: {:.5f}, ".format(
                 self.epoch + 1,
@@ -137,7 +145,9 @@ class Trainer(object):
 
         self.epoch += 1
         if self.rank == 0:
-            self.save_checkpoint()
+            if self.epoch % self.save_freq == 0:
+                self.logger.info("save checkpoint at epoch %d", self.epoch)
+                self.save_checkpoint()
 
     @torch.no_grad()
     def val_epoch(self):
@@ -221,3 +231,17 @@ class Trainer(object):
         log_str += "\n"
 
         return log_str
+    
+    def _log_dict_to_board(self, logs, step):
+        """
+        logs: list of dict
+        [
+            {'task', 'loss_key'}
+        ]
+        """
+        save_keys = ['loss', 'hm_loss', 'loc_loss']
+        for key in save_keys:
+            if key in logs:
+                if isinstance(logs[key], torch.Tensor):
+                    value = logs[key].detach().cpu().numpy()
+                self.writer.add_scalar(key, value, step)

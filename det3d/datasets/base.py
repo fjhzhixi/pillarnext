@@ -44,6 +44,10 @@ class BaseDataset(Dataset):
     def load_infos(self):
         with open(os.path.join(self._root_path, self._info_path), "rb") as f:
             self.infos = pickle.load(f)
+        # use idx as default info token
+        if 'token' not in self.infos[0].keys():
+            for i, info in enumerate(self.infos):
+                info['token'] = i
 
     def evaluation(self):
         """Dataset must provide a evaluation function to evaluate model."""
