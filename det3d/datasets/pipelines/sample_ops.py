@@ -181,6 +181,8 @@ class DataBaseSamplerV2:
             else:
                 mask2keep = np.ones((num_sampled,), dtype=np.bool_)
             # sampled_gt_boxes[:, 6:8] = 0 # np.nan
+            # move gt_boxes center from bottom to center
+            sampled_gt_boxes[:, 2] += sampled_gt_boxes[:, 5] / 2.0
             ret = {
                 "gt_names": np.array([s["name"] for s in sampled]),
                 "difficulty": np.array([s["difficulty"] for s in sampled]),

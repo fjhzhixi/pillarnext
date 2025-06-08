@@ -74,10 +74,9 @@ class KittiDataset(BaseDataset):
         gt_names = np.array(annos["name"]).copy()
 
         # load 3d boxes
-        center = annos["location"]
-        dims = annos["dimensions"]
-        rots = annos["rotation_y"]
-        gt_boxes = np.concatenate([center, dims, rots[..., np.newaxis]], axis=1)
+        gt_boxes = np.array(annos["converted_bbox"]).copy()
+        # move center from bottom to center
+        gt_boxes[:, 2] += gt_boxes[:, 5] / 2.0
             
         annotations.update({
             'gt_boxes': gt_boxes,
