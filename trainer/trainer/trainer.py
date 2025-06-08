@@ -186,6 +186,11 @@ class Trainer(object):
         # after_val_epoch()
         output_dir = Path("results") / f"epoch_{self.epoch}"
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # save detection results of each frame
+        with open(output_dir / "preds.pkl", "wb") as f:
+            pickle.dump(predictions, f)
+
         result_dict = self.val_dataloader.dataset.evaluation(
             predictions, output_dir)
 

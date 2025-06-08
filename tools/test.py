@@ -8,6 +8,8 @@ from omegaconf import DictConfig, OmegaConf
 
 import logging
 import os
+import pickle
+from pathlib import Path
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -34,6 +36,7 @@ def main(cfg: DictConfig):
     logger = logging.getLogger()
     if not logger.hasHandlers():
         logging.basicConfig(
+            filename='test.log',
             format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
     if distributed and local_rank != 0:
         logger.setLevel("ERROR")
@@ -45,6 +48,20 @@ def main(cfg: DictConfig):
     val_dataset = instantiate(cfg.data.val_dataset)
     val_dataloader = build_dataloader(val_dataset, **cfg.dataloader.val)
 
+    # check if having result file
+    epoch_id = cfg.load_from.split("_")[-1].split(".")[0]
+    output_dir = Path("results") / f"epoch_{epoch_id}"
+    force_compute = cfg.get("force_compute", False)
+    if os.path.isfile(f"{output_dir}/preds.pkl") and not force_compute:
+        logger.info(f"preds.pkl already exists, skip model inference")
+        with open(f" {output_dir}/preds.pkl", "rb") as f:
+            predictions = pickle.load(f)
+        result_dict = val_dataset.evaluation(predictions, output_dir)
+        logger.info("\n")
+        for k, v in result_dict.items():
+            logger.info(f"Evaluation {k}: {v}")
+        return
+    
     # build model
     model = instantiate(cfg.model)
     if distributed:
