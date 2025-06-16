@@ -5,7 +5,8 @@ defaults:
 train_dataset:
   _target_: det3d.datasets.kitti.KittiDataset
   root_path: /mnt/data4/jlk/kitti
-  info_path: kitti_infos_train_converted_4cls.pkl
+  # info_path: kitti_infos_train_converted_4cls.pkl
+  info_path: kitti_infos_train_converted_4cls_splited.pkl
   resampling: True
 
 val_dataset:

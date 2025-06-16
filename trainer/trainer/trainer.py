@@ -1,3 +1,4 @@
+import os
 import pickle
 import torch
 from pathlib import Path
@@ -18,6 +19,17 @@ def example_to_device(example, device, non_blocking=False):
             example_torch[k] = v.to(device, non_blocking=non_blocking)
 
     return example_torch
+
+
+def get_gt_labels(dataset):
+    gt_labels = {}
+    for info in dataset.infos:
+        res = {}
+        token = dataset.get_token(info)
+        dataset.load_box3d(res, info)
+        gt_labels[token] = res['annotations']
+
+    return gt_labels
 
 
 class Trainer(object):
@@ -153,50 +165,54 @@ class Trainer(object):
     def val_epoch(self):
         self.model.eval()
 
-        if self.rank == 0:
-            prog_bar = ProgressBar(len(self.val_dataloader))
-
-        results = {}
-
-        for i, data_batch in enumerate(self.val_dataloader):
-            self._inner_iter = i
-            data_batch = example_to_device(
-                data_batch, torch.cuda.current_device(), non_blocking=False)
-            res = self.model(data_batch)
-            results.update(res)
-            if self.rank == 0:
-                prog_bar.update()
-
-        # gather results across gpu
-        if self.world_size > 1:
-            dist.barrier()
-            all_predictions = [None for _ in range(self.world_size)]
-            dist.all_gather_object(all_predictions, results)
-
-        if self.rank != 0:
-            return
-
-        if self.world_size > 1:
-            predictions = {}
-            for p in all_predictions:
-                predictions.update(p)
-        else:
-            predictions = results
-
         # after_val_epoch()
         output_dir = Path("results") / f"epoch_{self.epoch}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # save detection results of each frame
-        with open(output_dir / "preds.pkl", "wb") as f:
-            pickle.dump(predictions, f)
+        if not os.path.exists(output_dir / "preds.pkl"):
+            if self.rank == 0:
+                prog_bar = ProgressBar(len(self.val_dataloader))
 
+            results = {}
+
+            for i, data_batch in enumerate(self.val_dataloader):
+                self._inner_iter = i
+                data_batch = example_to_device(
+                    data_batch, torch.cuda.current_device(), non_blocking=False)
+                res = self.model(data_batch)
+                results.update(res)
+                if self.rank == 0:
+                    prog_bar.update()
+
+            # gather results across gpu
+            if self.world_size > 1:
+                dist.barrier()
+                all_predictions = [None for _ in range(self.world_size)]
+                dist.all_gather_object(all_predictions, results)
+
+            if self.rank != 0:
+                return
+
+            if self.world_size > 1:
+                predictions = {}
+                for p in all_predictions:
+                    predictions.update(p)
+            else:
+                predictions = results
+
+            # save detection results of each frame
+            with open(output_dir / "preds.pkl", "wb") as f:
+                pickle.dump(predictions, f)
+
+        with open(output_dir / "preds.pkl", "rb") as f:
+            predictions = pickle.load(f)
+        gt_labels = get_gt_labels(self.val_dataloader.dataset)
         result_dict = self.val_dataloader.dataset.evaluation(
-            predictions, output_dir)
+            predictions, output_dir, gt_labels)
 
-        self.logger.info("\n")
-        for k, v in result_dict.items():
-            self.logger.info(f"Evaluation {k}: {v}")
+        # self.logger.info("\n")
+        # for k, v in result_dict.items():
+        #     self.logger.info(f"Evaluation {k}: {v}")
 
     def fit(self):
         self.logger.info("max: %d epochs", self.max_epochs)
