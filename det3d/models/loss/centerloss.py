@@ -21,6 +21,7 @@ class FastFocalLoss(nn.Module):
         ind, mask: B x M
         cat (category id for peaks): B x M
         '''
+        # import ipdb; ipdb.set_trace()
         mask = mask.float()
         gt = torch.pow(1 - target, 4)
         neg_loss = torch.pow(out, 2) * gt * torch.log(1 - out)

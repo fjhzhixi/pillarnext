@@ -9,6 +9,9 @@ idx_to_class = ['Car', 'Truck', 'Pedestrian', 'Cyclist']
 def calculate_iou(pred, label):
     res = []
     for pred_annos, gt_annos in zip(pred, label):
+        if len(pred_annos) == 0:
+            res.append(None)
+            continue
         pred_boxes = np.stack([item['box'] for item in pred_annos], axis=0)
         gt_boxes = np.stack([item['box'] for item in gt_annos], axis=0)
         pred_boxes = LiDARInstance3DBoxes(pred_boxes, origin=(0.5, 0.5, 0.5))
@@ -59,8 +62,10 @@ def compute_type(gt_annos, pred_annos, iou_matrix, cla, iou_threshold):
 
         if mx_pred is not None:
             result_pred_annos.append(pred_annos[mx_pred])
+            center_dis = np.linalg.norm(gt_anno['box'][:3] - pred_annos[mx_pred]['box'][:3])
             del pred_annos[mx_pred]
             result_pred_annos[-1]["type"] = "tp"
+            result_pred_annos[-1]["dis"] = center_dis
             num_tp += 1
     for pred_anno in pred_annos:
         pred_anno["type"] = "fp"
@@ -78,8 +83,9 @@ def compute_ap(pred_annos, num_gt):
         mAP:        Float, evaluation result
     DAIR-V2X 库里的代码有问题，参考https://zhuanlan.zhihu.com/p/37910324修改
     """
-    if num_gt == 0:
-        return 0.0
+    assert num_gt > 0
+    # if num_gt == 0:
+    #     return 0.0
     pred_annos = sorted(pred_annos, key=lambda x: x["score"], reverse=True)
     num_tp = np.zeros(len(pred_annos))
     for i in range(len(pred_annos)):

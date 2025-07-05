@@ -6,7 +6,7 @@ from ..utils.checkpoint import load_checkpoint, save_checkpoint
 from ..utils.progressbar import ProgressBar
 import torch.distributed as dist
 from tensorboardX import SummaryWriter
-
+import time
 def example_to_device(example, device, non_blocking=False):
     example_torch = {}
     for k, v in example.items():
@@ -160,6 +160,41 @@ class Trainer(object):
             if self.epoch % self.save_freq == 0:
                 self.logger.info("save checkpoint at epoch %d", self.epoch)
                 self.save_checkpoint()
+    
+    @torch.no_grad()
+    def inference(self):
+        start_time = time.time()
+        if self.rank == 0:
+            prog_bar = ProgressBar(len(self.val_dataloader))
+
+        results = {}
+
+        for i, data_batch in enumerate(self.val_dataloader):
+            self._inner_iter = i
+            data_batch = example_to_device(
+                data_batch, torch.cuda.current_device(), non_blocking=False)
+            res = self.model(data_batch)
+            results.update(res)
+            if self.rank == 0:
+                prog_bar.update()
+
+        # gather results across gpu
+        if self.world_size > 1:
+            dist.barrier()
+            all_predictions = [None for _ in range(self.world_size)]
+            dist.all_gather_object(all_predictions, results)
+
+        if self.rank != 0:
+            return
+
+        if self.world_size > 1:
+            predictions = {}
+            for p in all_predictions:
+                predictions.update(p)
+        else:
+            predictions = results
+        end_time = time.time()
+        return predictions, end_time - start_time
 
     @torch.no_grad()
     def val_epoch(self):
@@ -170,46 +205,19 @@ class Trainer(object):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if not os.path.exists(output_dir / "preds.pkl"):
-            if self.rank == 0:
-                prog_bar = ProgressBar(len(self.val_dataloader))
-
-            results = {}
-
-            for i, data_batch in enumerate(self.val_dataloader):
-                self._inner_iter = i
-                data_batch = example_to_device(
-                    data_batch, torch.cuda.current_device(), non_blocking=False)
-                res = self.model(data_batch)
-                results.update(res)
-                if self.rank == 0:
-                    prog_bar.update()
-
-            # gather results across gpu
-            if self.world_size > 1:
-                dist.barrier()
-                all_predictions = [None for _ in range(self.world_size)]
-                dist.all_gather_object(all_predictions, results)
-
-            if self.rank != 0:
-                return
-
-            if self.world_size > 1:
-                predictions = {}
-                for p in all_predictions:
-                    predictions.update(p)
-            else:
-                predictions = results
-
-            # save detection results of each frame
+            predictions, cost_time = self.inference()
             with open(output_dir / "preds.pkl", "wb") as f:
                 pickle.dump(predictions, f)
-
-        with open(output_dir / "preds.pkl", "rb") as f:
-            predictions = pickle.load(f)
+        else:
+            cost_time = 0
+            with open(output_dir / "preds.pkl", "rb") as f:
+                predictions = pickle.load(f)
+        
+        # predictions, cost_time = self.inference()
         gt_labels = get_gt_labels(self.val_dataloader.dataset)
         result_dict = self.val_dataloader.dataset.evaluation(
             predictions, output_dir, gt_labels)
-
+        print(f"Time delay: {cost_time / len(predictions) * 1000} ms")
         # self.logger.info("\n")
         # for k, v in result_dict.items():
         #     self.logger.info(f"Evaluation {k}: {v}")

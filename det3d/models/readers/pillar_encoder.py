@@ -99,8 +99,10 @@ class PillarNet(nn.Module):
                                           points_coords[:, 0] < grid_size[0],
                                           points_coords[:, 1] >= 0,
                                           points_coords[:, 1] < grid_size[1]))
-
+        # input_pc = points.clone()
         points = points[mask]
+        # if len(points) == 0:
+        #     import ipdb; ipdb.set_trace()
         points_coords = points_coords[mask]
 
         points_coords = points_coords.long()

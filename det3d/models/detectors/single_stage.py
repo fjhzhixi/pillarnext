@@ -20,6 +20,7 @@ class SingleStageDetector(nn.Module):
         self.post_processing = post_processing
 
     def extract_feat(self, data):
+        # import ipdb; ipdb.set_trace() 
         x = self.reader(data)
         if self.backbone is not None:
             x = self.backbone(*x)
